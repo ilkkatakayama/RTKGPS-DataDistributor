@@ -25,7 +25,7 @@ basestation_data_lock = allocate_lock()
 rover_data_lock = allocate_lock()
 whitelist_lock = allocate_lock()
 
-latest_rover_data = []
+latest_rover_data = {}
 '''
 Generates self-signed certificates for HTTPS server.
 copied from https://stackoverflow.com/questions/27164354/create-a-self-signed-x509-certificate-in-python
@@ -192,6 +192,16 @@ def dump_rover_data():
                         quality = msg.gps_qual
                         print(type(timestamp))
                         print(str(timestamp)+" "+str(latitude)+" "+str(longitude))
+                        if latest_rover_data["timestamp"] < timestamp:
+                            latest_rover_data = {   "timestamp" => timestamp, 
+                                                    "latitude"=>latitude, 
+                                                    "latitude_direction" => latitude_direction,
+                                                    "longitude" => longitude, 
+                                                    "longtitude_direction" => longtitude_direction,
+                                                    "number_of_satellites" => number_of_satellites,
+                                                    "horizontal_dilusion" => horizontal_dilusion, 
+                                                    "altitude" => altitude, 
+                                                    "quality" => quality}
                     except:
                         pass
             data_from_rover = ""
