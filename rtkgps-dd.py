@@ -8,6 +8,9 @@ from OpenSSL import crypto, SSL
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import ssl
 
+https_host = ""
+https_port = 4443
+
 basestation_connection_host = '10.11.12.148'
 basestation_connection_port = 1234
 rover_connection_host = '10.11.12.148'
@@ -22,6 +25,7 @@ basestation_data_lock = allocate_lock()
 rover_data_lock = allocate_lock()
 whitelist_lock = allocate_lock()
 
+latest_rover_data = []
 '''
 Generates self-signed certificates for HTTPS server.
 copied from https://stackoverflow.com/questions/27164354/create-a-self-signed-x509-certificate-in-python
@@ -75,12 +79,12 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
                     print("Added "+str(self.client_address[0])+" to TCP whitelist") 
             self.wfile.write(b'OK')
             
-    def log_message(self, format, *args):   #silence logging
+    def log_message(self, format, *args):   #silence HTTP server logging
         return
 
                 
 def start_HTTPS_server():
-    httpd = HTTPServer(('localhost', 4443), SimpleHTTPRequestHandler)
+    httpd = HTTPServer((https_host, https_port), SimpleHTTPRequestHandler)
     httpd.socket = ssl.wrap_socket (httpd.socket, 
             keyfile="./private.key", 
             certfile='./selfsigned.crt', server_side=True)
@@ -93,7 +97,7 @@ except:
     print("unable to create self-signed certificate for HTTPS server")
     exit()
 
-print("Starting HTTPS server...",end="")
+print("Starting HTTPS server on "+https_host+":"+str(https_port)+"...",end="")
 start_new_thread(start_HTTPS_server,())
 print("Started")
 
@@ -103,6 +107,7 @@ basestation_socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)    #Ena
 basestation_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 5)   #Consider Socket idle after 5sec
 basestation_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 3)  #Keep-alive packet interval
 basestation_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 10)   #Die after 10 retries (30secs)
+basestation_socket.settimeout(1)
 try:
     basestation_socket.bind((basestation_connection_host, basestation_connection_port))
 except socket.error as e:
@@ -117,6 +122,7 @@ rover_socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)    #Enable ke
 rover_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 5)   #Consider Socket idle after 5sec
 rover_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 3)  #Keep-alive packet interval
 rover_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 10)   #Die after 10 retries (30secs)
+rover_socket.settimeout(1)
 try:
     rover_socket.bind((rover_connection_host, rover_connection_port))
 except socket.error as e:
@@ -154,7 +160,7 @@ def rover_client(connection,address):
             print(str(address[0])+" not allowed to connect to basestation (IP not in whitelist)")
             connection.close()
             return
-    global data_from_data_from_rover
+    global data_from_rover
     buffer = ""
     while True:
         data_from_socket = connection.recv(4096)
@@ -166,29 +172,44 @@ def rover_client(connection,address):
         time.sleep(0.005) #sleep 5ms
     connection.close()
     
-def dump_basestation_data():
-    global data_from_basestation
+def dump_rover_data():
+    global data_from_rover
     while 1:
-        with basestation_data_lock:
-            lines = data_from_basestation.split("\n")
+        with rover_data_lock:
+            lines = data_from_rover.split("\n")
             for line in lines:
-                try:
-                    msg = pynmea2.parse(line)
-                    print("*************")
-                    print(msg.gps_qual)
-                except:
-                    pass
-            data_from_basestation = ""
+                if line != "":
+                    try:
+                        msg = pynmea2.parse(line)
+                        timestamp = msg.timestamp
+                        latitude = msg.lat
+                        latitude_direction = msg.lat_dir
+                        longitude = msg.lon
+                        longtitude_direction = msg.lon_dir
+                        number_of_satellites = msg.num_sats
+                        horizontal_dilusion = msg.horizontal_dil
+                        altitude = msg.altitude
+                        quality = msg.gps_qual
+                        print(type(timestamp))
+                        print(str(timestamp)+" "+str(latitude)+" "+str(longitude))
+                    except:
+                        pass
+            data_from_rover = ""
             
-#start_new_thread(dump_basestation_data,())
+start_new_thread(dump_rover_data,())
 while True:
-    Client, address = basestation_socket.accept()
-    print('Basestation connected to: ' + address[0] + ':' + str(address[1]))
-    start_new_thread(basestation_client, (Client, address))
-    
-    Client, address = rover_socket.accept()
-    print('Rover connected to: ' + address[0] + ':' + str(address[1]))
-    start_new_thread(rover_client, (Client, address))
+    try:
+        Client, address = basestation_socket.accept()
+        print('Basestation connected to: ' + address[0] + ':' + str(address[1]))
+        start_new_thread(basestation_client, (Client, address))
+    except:
+        pass
+    try:
+        Client, address = rover_socket.accept()
+        print('Rover connected to: ' + address[0] + ':' + str(address[1]))
+        start_new_thread(rover_client, (Client, address))
+    except:
+        pass
     
 basestation_socket.close()
 rover_socket.close()
