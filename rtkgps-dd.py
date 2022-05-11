@@ -81,6 +81,9 @@ def start_HTTPS_server():
             certfile='./selfsigned.crt', server_side=True)
     start_new_thread(httpd.serve_forever(),())
 
+'''
+Handles connections to basestation port
+'''
 def basestation_client(connection, address):
     with whitelist_lock:
         if address[0] not in TCP_whitelist:
@@ -99,6 +102,9 @@ def basestation_client(connection, address):
         time.sleep(0.005) #sleep 5ms
     connection.close()
     
+'''
+Handles connections to rover port
+'''
 def rover_client(connection,address):
     with whitelist_lock:
         if address[0] not in TCP_whitelist:
@@ -117,6 +123,9 @@ def rover_client(connection,address):
         time.sleep(0.005) #sleep 5ms
     connection.close()
     
+'''
+Stores rover data to variable latest_rover_data for HTTPS server to serve
+'''
 def dump_rover_data():
     global latest_rover_data
     global data_from_rover
