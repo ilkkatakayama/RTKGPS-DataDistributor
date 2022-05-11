@@ -1,5 +1,5 @@
 # RTKGPS-DataDistributor
-RTKGPS-DataDistributor receives TCP stream from Basestation and distributes it to Rover. The server also handles serving Rover position data using HTTPS. The application is used for RTK GPS positioning. Tested with U-Blox F9P receivers over 5G network.
+RTKGPS-DataDistributor receives TCP stream from GPS Basestation and distributes it to Rover. The server also handles serving Rover position data using HTTPS. The application is used for RTK GPS positioning. Tested with U-Blox F9P receivers over 5G network.
 
 The default base station port is 1234 and the server binds to all network interfaces (accepts only a single connection)
 
