@@ -7,6 +7,9 @@ import pynmea2
 from OpenSSL import crypto, SSL
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import ssl
+from datetime import datetime
+import traceback
+
 
 https_host = ""
 https_port = 4443
@@ -23,6 +26,7 @@ data_from_rover = ""
 
 basestation_data_lock = allocate_lock()
 rover_data_lock = allocate_lock()
+latest_rover_nmea_lock = allocate_lock()
 whitelist_lock = allocate_lock()
 
 latest_rover_data = {}
@@ -78,6 +82,19 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
                     TCP_whitelist.append(self.client_address[0])
                     print("Added "+str(self.client_address[0])+" to TCP whitelist") 
             self.wfile.write(b'OK')
+        if self.path == "/get_rover_data":
+            print(latest_rover_data)
+            json_string = '{"timestamp": "'+str(str(latest_rover_data["timestamp"]))+'"'
+            json_string += ', "latitude": "'+str(latest_rover_data["latitude"])+'"'
+            json_string += ', "latitude_direction": "'+str(latest_rover_data["latitude_direction"])+'"'
+            json_string += ', "longitude": "'+str(latest_rover_data["longitude"])+'"'
+            json_string += ', "longtitude_direction": "'+str(latest_rover_data["longtitude_direction"])+'"'
+            json_string += ', "number_of_satellites": "'+str(latest_rover_data["number_of_satellites"])+'"'
+            json_string += ', "horizontal_dilusion": "'+str(latest_rover_data["horizontal_dilusion"])+'"'
+            json_string += ', "altitude": "'+str(latest_rover_data["altitude"])+'"'
+            json_string += ', "quality": "'+str(latest_rover_data["quality"])+'"}'
+            self.wfile.write(str.encode(json_string))
+            
             
     def log_message(self, format, *args):   #silence HTTP server logging
         return
@@ -173,6 +190,7 @@ def rover_client(connection,address):
     connection.close()
     
 def dump_rover_data():
+    global latest_rover_data
     global data_from_rover
     while 1:
         with rover_data_lock:
@@ -181,6 +199,8 @@ def dump_rover_data():
                 if line != "":
                     try:
                         msg = pynmea2.parse(line)
+                        if msg.sentence_type != "GGA":
+                            continue
                         timestamp = msg.timestamp
                         latitude = msg.lat
                         latitude_direction = msg.lat_dir
@@ -190,20 +210,19 @@ def dump_rover_data():
                         horizontal_dilusion = msg.horizontal_dil
                         altitude = msg.altitude
                         quality = msg.gps_qual
-                        print(type(timestamp))
-                        print(str(timestamp)+" "+str(latitude)+" "+str(longitude))
-                        if latest_rover_data["timestamp"] < timestamp:
-                            latest_rover_data = {   "timestamp" => timestamp, 
-                                                    "latitude"=>latitude, 
-                                                    "latitude_direction" => latitude_direction,
-                                                    "longitude" => longitude, 
-                                                    "longtitude_direction" => longtitude_direction,
-                                                    "number_of_satellites" => number_of_satellites,
-                                                    "horizontal_dilusion" => horizontal_dilusion, 
-                                                    "altitude" => altitude, 
-                                                    "quality" => quality}
+                        with latest_rover_nmea_lock:
+                            latest_rover_data = {   "timestamp": timestamp, 
+                                                    "latitude": latitude, 
+                                                    "latitude_direction": latitude_direction,
+                                                    "longitude": longitude, 
+                                                    "longtitude_direction": longtitude_direction,
+                                                    "number_of_satellites": number_of_satellites,
+                                                    "horizontal_dilusion": horizontal_dilusion, 
+                                                    "altitude": altitude, 
+                                                    "quality": quality}
                     except:
-                        pass
+                        traceback.print_exc()
+                        continue
             data_from_rover = ""
             
 start_new_thread(dump_rover_data,())
